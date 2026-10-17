@@ -28,12 +28,16 @@ n8n credential resource with automatic rotation on update.
 
 ### Required
 
-- `data` (Map of String, Sensitive) Credential data (secrets, passwords, API keys, etc.). String values are automatically converted to the correct type (number, boolean) based on the credential schema.
 - `name` (String) Credential name
 - `type` (String) Credential type (e.g., httpHeaderAuth)
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
+- `data` (Map of String, Sensitive) Credential data (secrets, passwords, API keys, etc.). String values are automatically converted to the correct type (number, boolean) based on the credential schema.
+- `data_wo` (Map of String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only credential data, never stored in the plan or state. Use instead of `data` (requires Terraform 1.11 or later). Change `data_wo_version` to send new values.
+- `data_wo_version` (Number) Version of `data_wo`. Changing it rotates the credential with the current `data_wo` values.
 - `project_id` (String) Project ID to assign the credential to. If not set, credential is created in personal space (General).
 
 ### Read-Only
