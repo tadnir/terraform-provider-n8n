@@ -259,22 +259,22 @@ func mapWorkflowToModel(ctx context.Context, workflow *n8nsdk.Workflow, plan *mo
 func serializeWorkflowJSON(workflow *n8nsdk.Workflow, plan *models.Resource) {
 	// Check for non-nil value.
 	if workflow.Nodes != nil {
-		// Check for error.
-		if nodesJSON, err := json.Marshal(workflow.Nodes); err == nil {
+		// Keep the configured string when it holds the same nodes.
+		if nodesJSON, err := json.Marshal(workflow.Nodes); err == nil && !jsonEquivalent(plan.NodesJSON, nodesJSON, dropGeneratedNodeIDs) {
 			plan.NodesJSON = types.StringValue(string(nodesJSON))
 		}
 	}
 	// Check for non-nil value.
 	if workflow.Connections != nil {
-		// Check for error.
-		if connectionsJSON, err := json.Marshal(workflow.Connections); err == nil {
+		// Keep the configured string when it holds the same connections.
+		if connectionsJSON, err := json.Marshal(workflow.Connections); err == nil && !jsonEquivalent(plan.ConnectionsJSON, connectionsJSON, nil) {
 			plan.ConnectionsJSON = types.StringValue(string(connectionsJSON))
 		}
 	}
 	// Normalize settings before serialization to avoid unnecessary diffs.
 	normalizedSettings := normalizeWorkflowSettings(workflow.Settings)
-	// Check for error.
-	if settingsJSON, err := json.Marshal(normalizedSettings); err == nil {
+	// Keep the configured string when it holds the same settings.
+	if settingsJSON, err := json.Marshal(normalizedSettings); err == nil && !jsonEquivalent(plan.SettingsJSON, settingsJSON, nil) {
 		plan.SettingsJSON = types.StringValue(string(settingsJSON))
 	}
 }

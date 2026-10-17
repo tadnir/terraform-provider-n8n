@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -3369,4 +3370,129 @@ func Test_applyTimestampFallbacks(t *testing.T) {
 			assert.Equal(t, tt.expectUpdatedAt, plan.UpdatedAt, "UpdatedAt should match expected")
 		})
 	}
+}
+
+// TestWorkflowResource_executeDeleteLogic_Published tests deleting an active
+// workflow, which n8n 2.x refuses until it is unpublished.
+func TestWorkflowResource_executeDeleteLogic_Published(t *testing.T) {
+	t.Parallel()
+
+	const workflowJSON = `{"id":"wf-1","name":"Test","active":false,"nodes":[],"connections":{},"settings":{}}`
+
+	tests := []struct {
+		name            string
+		deactivate      int
+		conflicts       int
+		expectError     bool
+		expectDeletes   int
+		expectDeactives int
+	}{
+		{name: "deleted once unpublished", deactivate: http.StatusOK, conflicts: 2, expectDeletes: 3, expectDeactives: 1},
+		{name: "deactivation fails", deactivate: http.StatusInternalServerError, expectError: true, expectDeactives: 1},
+		{name: "still unpublishing after every retry", deactivate: http.StatusOK, conflicts: deleteConflictRetries + 1, expectError: true, expectDeletes: deleteConflictRetries + 1, expectDeactives: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var deletes, deactivates int
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/workflows/wf-1/deactivate":
+					deactivates++
+					w.WriteHeader(tt.deactivate)
+					_, _ = w.Write([]byte(workflowJSON))
+				case r.Method == http.MethodDelete && r.URL.Path == "/workflows/wf-1":
+					deletes++
+					if deletes <= tt.conflicts {
+						w.WriteHeader(http.StatusConflict)
+						_, _ = w.Write([]byte(`{"message":"Workflow is still being unpublished."}`))
+						return
+					}
+					_, _ = w.Write([]byte(workflowJSON))
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			})
+			n8nClient, server := setupTestClient(t, handler)
+			defer server.Close()
+
+			r := &WorkflowResource{client: n8nClient, deleteConflictDelay: time.Millisecond}
+			state := &models.Resource{ID: types.StringValue("wf-1"), Active: types.BoolValue(true)}
+			resp := &resource.DeleteResponse{}
+
+			result := r.executeDeleteLogic(context.Background(), state, resp)
+
+			assert.Equal(t, !tt.expectError, result)
+			assert.Equal(t, tt.expectError, resp.Diagnostics.HasError())
+			assert.Equal(t, tt.expectDeletes, deletes)
+			assert.Equal(t, tt.expectDeactives, deactivates)
+		})
+	}
+}
+
+// TestWorkflowResource_executeDeleteLogic_Cancelled tests that waiting for
+// n8n to unpublish a workflow stops when the context is cancelled.
+func TestWorkflowResource_executeDeleteLogic_Cancelled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	answered := make(chan struct{}, 1)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"message":"Workflow is still being unpublished."}`))
+		answered <- struct{}{}
+	})
+	n8nClient, server := setupTestClient(t, handler)
+	defer server.Close()
+	// Cancel once the first delete was answered, while the retry waits.
+	go func() {
+		<-answered
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	r := &WorkflowResource{client: n8nClient, deleteConflictDelay: time.Hour}
+	state := &models.Resource{ID: types.StringValue("wf-1"), Active: types.BoolValue(false)}
+	resp := &resource.DeleteResponse{}
+
+	assert.False(t, r.executeDeleteLogic(ctx, state, resp))
+	assert.True(t, resp.Diagnostics.HasError())
+}
+
+// TestWorkflowResource_conflictDelay tests the delay between delete retries.
+func TestWorkflowResource_conflictDelay(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, deleteConflictDelayDefault, (&WorkflowResource{}).conflictDelay())
+	assert.Equal(t, time.Millisecond, (&WorkflowResource{deleteConflictDelay: time.Millisecond}).conflictDelay())
+}
+
+// Test_isUnpublishConflict tests which delete failures are retried.
+func Test_isUnpublishConflict(t *testing.T) {
+	t.Parallel()
+
+	failure := assert.AnError
+
+	assert.True(t, isUnpublishConflict(http.StatusConflict, failure))
+	assert.False(t, isUnpublishConflict(http.StatusConflict, nil))
+	assert.False(t, isUnpublishConflict(http.StatusNotFound, failure))
+	assert.False(t, isUnpublishConflict(0, failure))
+}
+
+// TestWorkflowResource_deleteWorkflow_NoResponse tests a delete that gets no HTTP response.
+func TestWorkflowResource_deleteWorkflow_NoResponse(t *testing.T) {
+	t.Parallel()
+
+	n8nClient, server := setupTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Close()
+
+	status, err := (&WorkflowResource{client: n8nClient}).deleteWorkflow(context.Background(), "wf-1")
+
+	assert.Equal(t, 0, status)
+	assert.Error(t, err)
 }

@@ -8,6 +8,8 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -58,6 +60,8 @@ type WorkflowResourceInterface interface {
 type WorkflowResource struct {
 	// client is the N8n API client used for operations.
 	client *client.N8nClient
+	// deleteConflictDelay is the wait between delete retries; zero means deleteConflictDelayDefault.
+	deleteConflictDelay time.Duration
 }
 
 // NewWorkflowResource creates a new WorkflowResource instance.
@@ -607,8 +611,105 @@ func (r *WorkflowResource) Delete(ctx context.Context, req resource.DeleteReques
 // Returns:
 //   - bool: True if delete succeeded, false otherwise
 func (r *WorkflowResource) executeDeleteLogic(ctx context.Context, state *models.Resource, resp *resource.DeleteResponse) bool {
-	// Delete workflow using SDK.
-	_, httpResp, err := r.client.APIClient.WorkflowAPI.WorkflowsIdDelete(ctx, state.ID.ValueString()).Execute()
+	// n8n 2.x refuses to delete a published (active) workflow, so unpublish it first.
+	if state.Active.ValueBool() && !r.deactivateBeforeDelete(ctx, state, resp) {
+		// Return failure.
+		return false
+	}
+
+	// Delete workflow using SDK. n8n 2.x unpublishes in the background and
+	// answers 409 Conflict until it is done, so retry those for a while.
+	status, err := r.deleteWorkflow(ctx, state.ID.ValueString())
+	// Retry while n8n is still unpublishing.
+	for attempt := 0; isUnpublishConflict(status, err) && attempt < deleteConflictRetries; attempt++ {
+		// Check if the context was cancelled while waiting.
+		select {
+		case <-ctx.Done():
+			resp.Diagnostics.AddError("Error deleting workflow", ctx.Err().Error())
+			// Return failure.
+			return false
+		case <-time.After(r.conflictDelay()):
+		}
+		status, err = r.deleteWorkflow(ctx, state.ID.ValueString())
+	}
+
+	// Check for API error.
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error deleting workflow",
+			fmt.Sprintf("Could not delete workflow ID %s: %s\nHTTP status: %d", state.ID.ValueString(), err.Error(), status),
+		)
+		// Return failure.
+		return false
+	}
+
+	// Return success.
+	return true
+}
+
+// deleteWorkflow sends one delete request for a workflow.
+//
+// Params:
+//   - ctx: Context for the request
+//   - id: The workflow ID
+//
+// Returns:
+//   - int: The HTTP status code, or 0 when there was no response
+//   - error: The API error, if any
+func (r *WorkflowResource) deleteWorkflow(ctx context.Context, id string) (int, error) {
+	_, httpResp, err := r.client.APIClient.WorkflowAPI.WorkflowsIdDelete(ctx, id).Execute()
+	// Check for non-nil HTTP response.
+	if httpResp == nil {
+		// Return without status.
+		return 0, err
+	}
+	// Check for non-nil body.
+	if httpResp.Body != nil {
+		defer httpResp.Body.Close()
+	}
+	// Return status and error.
+	return httpResp.StatusCode, err
+}
+
+// conflictDelay returns the wait between delete retries.
+//
+// Returns:
+//   - time.Duration: The configured delay, or deleteConflictDelayDefault when unset
+func (r *WorkflowResource) conflictDelay() time.Duration {
+	// Check for configured delay.
+	if r.deleteConflictDelay > 0 {
+		// Return configured delay.
+		return r.deleteConflictDelay
+	}
+	// Return default delay.
+	return deleteConflictDelayDefault
+}
+
+// isUnpublishConflict reports whether a delete failed because n8n is still unpublishing the workflow.
+//
+// Params:
+//   - status: The HTTP status code of the delete request
+//   - err: The error of the delete request
+//
+// Returns:
+//   - bool: True if the delete should be retried
+func isUnpublishConflict(status int, err error) bool {
+	// Return whether the request failed with 409 Conflict.
+	return err != nil && status == http.StatusConflict
+}
+
+// deactivateBeforeDelete deactivates an active workflow so that it can be deleted.
+//
+// Params:
+//   - ctx: Context for the request
+//   - state: The current resource state
+//   - resp: Delete response
+//
+// Returns:
+//   - bool: True if deactivation succeeded, false otherwise
+func (r *WorkflowResource) deactivateBeforeDelete(ctx context.Context, state *models.Resource, resp *resource.DeleteResponse) bool {
+	// Deactivate workflow using SDK.
+	_, httpResp, err := r.client.APIClient.WorkflowAPI.WorkflowsIdDeactivatePost(ctx, state.ID.ValueString()).Execute()
 	// Check for non-nil HTTP response.
 	if httpResp != nil && httpResp.Body != nil {
 		defer httpResp.Body.Close()
@@ -617,8 +718,8 @@ func (r *WorkflowResource) executeDeleteLogic(ctx context.Context, state *models
 	// Check for API error.
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error deleting workflow",
-			fmt.Sprintf("Could not delete workflow ID %s: %s\nHTTP Response: %v", state.ID.ValueString(), err.Error(), httpResp),
+			"Error deactivating workflow before deletion",
+			fmt.Sprintf("Could not deactivate workflow ID %s: %s\nHTTP Response: %v", state.ID.ValueString(), err.Error(), httpResp),
 		)
 		// Return failure.
 		return false

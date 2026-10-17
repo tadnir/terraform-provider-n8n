@@ -183,7 +183,7 @@ func (r *CredentialResource) updateAffectedWorkflows(ctx context.Context, affect
 		// Update workflow
 		_, httpResp, err := r.client.APIClient.WorkflowAPI.
 			WorkflowsIdPut(ctx, backup.ID).
-			Workflow(*updatedWorkflow).
+			Workflow(writableWorkflow(updatedWorkflow)).
 			Execute()
 		closeResponseBody(ctx, httpResp)
 
@@ -435,5 +435,24 @@ func mapCredentialProjectID(plan *models.Resource, requestedProjectID types.Stri
 	} else {
 		// Set to null if not specified.
 		plan.ProjectID = types.StringNull()
+	}
+}
+
+// writableWorkflow returns the fields of a workflow that the n8n API accepts on update.
+// A workflow read from the API also holds read-only fields (id, active, timestamps,
+// version ids...), which n8n rejects when they are sent back.
+//
+// Params:
+//   - workflow: The workflow as read from the API
+//
+// Returns:
+//   - n8nsdk.Workflow: A workflow holding only its name, nodes, connections and settings
+func writableWorkflow(workflow *n8nsdk.Workflow) n8nsdk.Workflow {
+	// Return the writable copy.
+	return n8nsdk.Workflow{
+		Name:        workflow.Name,
+		Nodes:       workflow.Nodes,
+		Connections: workflow.Connections,
+		Settings:    workflow.Settings,
 	}
 }
