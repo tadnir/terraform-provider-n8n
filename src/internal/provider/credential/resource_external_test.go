@@ -169,13 +169,15 @@ func TestCredentialResource_ImportState(t *testing.T) {
 
 				// Initialize the raw value with required attributes
 				state.Raw = tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, nil),
-					"name":       tftypes.NewValue(tftypes.String, nil),
-					"type":       tftypes.NewValue(tftypes.String, nil),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, nil),
-					"updated_at": tftypes.NewValue(tftypes.String, nil),
+					"id":              tftypes.NewValue(tftypes.String, nil),
+					"name":            tftypes.NewValue(tftypes.String, nil),
+					"type":            tftypes.NewValue(tftypes.String, nil),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, nil),
+					"updated_at":      tftypes.NewValue(tftypes.String, nil),
 				})
 
 				req := resource.ImportStateRequest{
@@ -204,13 +206,15 @@ func TestCredentialResource_ImportState(t *testing.T) {
 					Schema: schemaResp.Schema,
 				}
 				state.Raw = tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, nil),
-					"name":       tftypes.NewValue(tftypes.String, nil),
-					"type":       tftypes.NewValue(tftypes.String, nil),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, nil),
-					"updated_at": tftypes.NewValue(tftypes.String, nil),
+					"id":              tftypes.NewValue(tftypes.String, nil),
+					"name":            tftypes.NewValue(tftypes.String, nil),
+					"type":            tftypes.NewValue(tftypes.String, nil),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, nil),
+					"updated_at":      tftypes.NewValue(tftypes.String, nil),
 				})
 				req := resource.ImportStateRequest{
 					ID: "test-id",
@@ -429,13 +433,15 @@ func TestCredentialResource_Create(t *testing.T) {
 					"key": tftypes.NewValue(tftypes.String, "value"),
 				}
 				planRaw := tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, nil),
-					"name":       tftypes.NewValue(tftypes.String, "test-credential"),
-					"type":       tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, nil),
-					"updated_at": tftypes.NewValue(tftypes.String, nil),
+					"id":              tftypes.NewValue(tftypes.String, nil),
+					"name":            tftypes.NewValue(tftypes.String, "test-credential"),
+					"type":            tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, nil),
+					"updated_at":      tftypes.NewValue(tftypes.String, nil),
 				})
 
 				req := resource.CreateRequest{
@@ -484,13 +490,15 @@ func TestCredentialResource_Read(t *testing.T) {
 					"key": tftypes.NewValue(tftypes.String, "value"),
 				}
 				stateRaw := tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, "cred-123"),
-					"name":       tftypes.NewValue(tftypes.String, "test-credential"),
-					"type":       tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
-					"updated_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"id":              tftypes.NewValue(tftypes.String, "cred-123"),
+					"name":            tftypes.NewValue(tftypes.String, "test-credential"),
+					"type":            tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"updated_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
 				})
 
 				req := resource.ReadRequest{
@@ -561,13 +569,15 @@ func TestCredentialResource_Update(t *testing.T) {
 					"key": tftypes.NewValue(tftypes.String, "value"),
 				}
 				stateRaw := tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, "cred-123"),
-					"name":       tftypes.NewValue(tftypes.String, "test-credential"),
-					"type":       tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
-					"updated_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"id":              tftypes.NewValue(tftypes.String, "cred-123"),
+					"name":            tftypes.NewValue(tftypes.String, "test-credential"),
+					"type":            tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"updated_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
 				})
 
 				req := resource.UpdateRequest{
@@ -598,13 +608,15 @@ func TestCredentialResource_Update(t *testing.T) {
 					"key": tftypes.NewValue(tftypes.String, "value"),
 				}
 				planRaw := tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, "cred-123"),
-					"name":       tftypes.NewValue(tftypes.String, "test-credential-updated"),
-					"type":       tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
-					"updated_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"id":              tftypes.NewValue(tftypes.String, "cred-123"),
+					"name":            tftypes.NewValue(tftypes.String, "test-credential-updated"),
+					"type":            tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"updated_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
 				})
 
 				req := resource.UpdateRequest{
@@ -689,13 +701,15 @@ func TestCredentialResource_Delete(t *testing.T) {
 					"key": tftypes.NewValue(tftypes.String, "value"),
 				}
 				stateRaw := tftypes.NewValue(schemaResp.Schema.Type().TerraformType(ctx), map[string]tftypes.Value{
-					"id":         tftypes.NewValue(tftypes.String, "cred-123"),
-					"name":       tftypes.NewValue(tftypes.String, "test-credential"),
-					"type":       tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
-					"data":       tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
-					"project_id": tftypes.NewValue(tftypes.String, nil),
-					"created_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
-					"updated_at": tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"id":              tftypes.NewValue(tftypes.String, "cred-123"),
+					"name":            tftypes.NewValue(tftypes.String, "test-credential"),
+					"type":            tftypes.NewValue(tftypes.String, "httpHeaderAuth"),
+					"data":            tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, dataMap),
+					"data_wo":         tftypes.NewValue(tftypes.Map{ElementType: tftypes.String}, nil),
+					"data_wo_version": tftypes.NewValue(tftypes.Number, nil),
+					"project_id":      tftypes.NewValue(tftypes.String, nil),
+					"created_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
+					"updated_at":      tftypes.NewValue(tftypes.String, "2024-01-01T00:00:00Z"),
 				})
 
 				req := resource.DeleteRequest{

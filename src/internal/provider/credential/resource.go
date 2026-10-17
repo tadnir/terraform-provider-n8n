@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/kodflow/terraform-provider-n8n/sdk/n8nsdk"
@@ -26,10 +27,11 @@ const ROTATION_THROTTLE_MILLISECONDS int = 100
 
 // Ensure CredentialResource implements required interfaces.
 var (
-	_ resource.Resource                = &CredentialResource{}
-	_ CredentialResourceInterface      = &CredentialResource{}
-	_ resource.ResourceWithConfigure   = &CredentialResource{}
-	_ resource.ResourceWithImportState = &CredentialResource{}
+	_ resource.Resource                   = &CredentialResource{}
+	_ CredentialResourceInterface         = &CredentialResource{}
+	_ resource.ResourceWithConfigure      = &CredentialResource{}
+	_ resource.ResourceWithImportState    = &CredentialResource{}
+	_ resource.ResourceWithValidateConfig = &CredentialResource{}
 )
 
 // CredentialResourceInterface defines the interface for CredentialResource.
@@ -43,6 +45,7 @@ type CredentialResourceInterface interface {
 	Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse)
 	Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse)
 	ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse)
+	ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse)
 }
 
 // CredentialResource defines the resource implementation for n8n credentials.
@@ -109,18 +112,26 @@ func (r *CredentialResource) schemaAttributes() map[string]schema.Attribute {
 	dataDesc := "Credential data (secrets, passwords, API keys, etc.). " +
 		"String values are automatically converted to the correct type (number, boolean) " +
 		"based on the credential schema."
+	// Write-only data attribute description.
+	dataWODesc := "Write-only credential data, never stored in the plan or state. " +
+		"Use instead of `data` (requires Terraform 1.11 or later). " +
+		"Change `data_wo_version` to send new values."
+	// Write-only data version attribute description.
+	dataWOVersionDesc := "Version of `data_wo`. Changing it rotates the credential with the current `data_wo` values."
 	// Project ID attribute description.
 	projectDesc := "Project ID to assign the credential to. " +
 		"If not set, credential is created in personal space (General)."
 	// Return credential schema attributes.
 	return map[string]schema.Attribute{
-		"id":         schema.StringAttribute{MarkdownDescription: "Credential identifier", Computed: true},
-		"name":       schema.StringAttribute{MarkdownDescription: "Credential name", Required: true},
-		"type":       schema.StringAttribute{MarkdownDescription: "Credential type (e.g., httpHeaderAuth)", Required: true},
-		"data":       schema.MapAttribute{MarkdownDescription: dataDesc, ElementType: types.StringType, Required: true, Sensitive: true},
-		"project_id": schema.StringAttribute{MarkdownDescription: projectDesc, Optional: true, Computed: true},
-		"created_at": schema.StringAttribute{MarkdownDescription: "Timestamp when the credential was created", Computed: true},
-		"updated_at": schema.StringAttribute{MarkdownDescription: "Timestamp when the credential was last updated", Computed: true},
+		"id":              schema.StringAttribute{MarkdownDescription: "Credential identifier", Computed: true},
+		"name":            schema.StringAttribute{MarkdownDescription: "Credential name", Required: true},
+		"type":            schema.StringAttribute{MarkdownDescription: "Credential type (e.g., httpHeaderAuth)", Required: true},
+		"data":            schema.MapAttribute{MarkdownDescription: dataDesc, ElementType: types.StringType, Optional: true, Sensitive: true},
+		"data_wo":         schema.MapAttribute{MarkdownDescription: dataWODesc, ElementType: types.StringType, Optional: true, Sensitive: true, WriteOnly: true},
+		"data_wo_version": schema.Int64Attribute{MarkdownDescription: dataWOVersionDesc, Optional: true},
+		"project_id":      schema.StringAttribute{MarkdownDescription: projectDesc, Optional: true, Computed: true},
+		"created_at":      schema.StringAttribute{MarkdownDescription: "Timestamp when the credential was created", Computed: true},
+		"updated_at":      schema.StringAttribute{MarkdownDescription: "Timestamp when the credential was last updated", Computed: true},
 	}
 }
 
@@ -167,13 +178,96 @@ func (r *CredentialResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	// Execute create logic
-	if !r.executeCreateLogic(ctx, plan, resp) {
+	// Send write-only data instead of data when it is configured.
+	applied, ok := withWriteOnlyData(ctx, req.Config, plan, &resp.Diagnostics)
+	// Check if write-only data read succeeded.
+	if !ok {
 		// Return with error.
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	// Execute create logic
+	if !r.executeCreateLogic(ctx, applied, resp) {
+		// Return with error.
+		return
+	}
+
+	// Never store write-only data in state.
+	applied.Data = plan.Data
+	resp.Diagnostics.Append(resp.State.Set(ctx, applied)...)
+}
+
+// withWriteOnlyData returns a copy of the plan whose data holds the configured data_wo values.
+// The plan itself is returned unchanged when data_wo is not set.
+//
+// Params:
+//   - ctx: Context for the request
+//   - config: The resource configuration, the only place write-only values are available
+//   - plan: The planned resource data
+//   - diags: Diagnostics to append errors to
+//
+// Returns:
+//   - *models.Resource: The plan to send to the API
+//   - bool: True if the configuration was read successfully
+func withWriteOnlyData(ctx context.Context, config tfsdk.Config, plan *models.Resource, diags *diag.Diagnostics) (*models.Resource, bool) {
+	// Check if a configuration was provided.
+	if config.Raw.IsNull() {
+		// Return the plan unchanged.
+		return plan, true
+	}
+
+	var dataWO types.Map
+	diags.Append(config.GetAttribute(ctx, path.Root("data_wo"), &dataWO)...)
+	// Check if config read succeeded.
+	if diags.HasError() {
+		// Return failure.
+		return nil, false
+	}
+
+	applied := *plan
+	// Use write-only data when configured.
+	if !dataWO.IsNull() {
+		applied.Data = dataWO
+	}
+
+	// Return the plan to apply.
+	return &applied, true
+}
+
+// ValidateConfig checks that exactly one of data and data_wo is set.
+//
+// Params:
+//   - ctx: Context for the request
+//   - req: Validate config request
+//   - resp: Validate config response
+func (r *CredentialResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config models.Resource
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	// Check if config read succeeded.
+	if resp.Diagnostics.HasError() {
+		// Return with error.
+		return
+	}
+
+	hasData := !config.Data.IsNull()
+	hasDataWO := !config.DataWO.IsNull()
+	// Check that exactly one data attribute is set.
+	if hasData == hasDataWO {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("data"),
+			"Invalid credential data",
+			"Exactly one of data and data_wo must be set.",
+		)
+	}
+
+	// Check that data_wo_version is only used with data_wo.
+	if !config.DataWOVersion.IsNull() && !hasDataWO {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("data_wo_version"),
+			"Invalid credential data version",
+			"data_wo_version can only be set together with data_wo.",
+		)
+	}
 }
 
 // extractCredentialData extracts credential data from Terraform types.Map.
@@ -375,13 +469,23 @@ func (r *CredentialResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	// Execute update logic
-	if !r.executeUpdateLogic(ctx, plan, state, resp) {
+	// Send write-only data instead of data when it is configured.
+	applied, ok := withWriteOnlyData(ctx, req.Config, plan, &resp.Diagnostics)
+	// Check if write-only data read succeeded.
+	if !ok {
 		// Return with error.
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	// Execute update logic
+	if !r.executeUpdateLogic(ctx, applied, state, resp) {
+		// Return with error.
+		return
+	}
+
+	// Never store write-only data in state.
+	applied.Data = plan.Data
+	resp.Diagnostics.Append(resp.State.Set(ctx, applied)...)
 }
 
 // executeUpdateLogic contains the main logic for updating a credential using rotation strategy.
