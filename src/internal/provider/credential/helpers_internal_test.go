@@ -1074,3 +1074,29 @@ func Test_mapCredentialProjectID(t *testing.T) {
 		})
 	}
 }
+
+func Test_writableWorkflow(t *testing.T) {
+	t.Parallel()
+
+	id := "wf-1"
+	active := true
+	nodeName := "Start"
+	timezone := "UTC"
+	workflow := &n8nsdk.Workflow{
+		Id:          &id,
+		Name:        "Test",
+		Active:      &active,
+		Nodes:       []n8nsdk.Node{{Name: &nodeName}},
+		Connections: map[string]any{"Start": map[string]any{}},
+		Settings:    n8nsdk.WorkflowSettings{Timezone: &timezone},
+	}
+
+	got := writableWorkflow(workflow)
+
+	assert.Equal(t, n8nsdk.Workflow{
+		Name:        "Test",
+		Nodes:       workflow.Nodes,
+		Connections: workflow.Connections,
+		Settings:    workflow.Settings,
+	}, got)
+}

@@ -761,7 +761,7 @@ func (r *CredentialResource) restoreWorkflow(
 ) bool {
 	_, httpRespRestore, errRestore := r.client.APIClient.WorkflowAPI.
 		WorkflowsIdPut(ctx, workflowID).
-		Workflow(*original).
+		Workflow(writableWorkflow(original)).
 		Execute()
 	// Close HTTP response body if present.
 	if httpRespRestore != nil && httpRespRestore.Body != nil {
